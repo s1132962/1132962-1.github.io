@@ -6,19 +6,18 @@ const resetBtn = document.getElementById('reset-btn');
 const aiLevelSelect = document.getElementById('ai-level');
 
 let board = [];
-let currentPlayer = 1; // 1: 黑, 2: 白
+let currentPlayer = 1; 
 let isAnimating = false;
 
-// 強化型權重矩陣：-40 與 -20 的位置是為了誘使對方下在更爛的位置
 const weights = [
-    [100, -40, 15,  5,  5, 15, -40, 100],
-    [-40, -50, -2, -2, -2, -2, -50, -40],
-    [ 15,  -2,  5,  2,  2,  5,  -2,  15],
-    [  5,  -2,  2,  0,  0,  2,  -2,   5],
-    [  5,  -2,  2,  0,  0,  2,  -2,   5],
-    [ 15,  -2,  5,  2,  2,  5,  -2,  15],
-    [-40, -50, -2, -2, -2, -2, -50, -40],
-    [100, -40, 15,  5,  5, 15, -40, 100]
+    [100, -40, 20,  5,  5, 20, -40, 100],
+    [-40, -60, -5, -5, -5, -5, -60, -40],
+    [ 20,  -5, 10,  3,  3, 10,  -5,  20],
+    [  5,  -5,  3,  1,  1,  3,  -5,   5],
+    [  5,  -5,  3,  1,  1,  3,  -5,   5],
+    [ 20,  -5, 10,  3,  3, 10,  -5,  20],
+    [-40, -60, -5, -5, -5, -5, -60, -40],
+    [100, -40, 20,  5,  5, 20, -40, 100]
 ];
 
 function init() {
@@ -53,24 +52,21 @@ function render() {
     if (isAnimating) return;
     boardEl.innerHTML = '';
     let b = 0, w = 0;
-    
     for(let r=0; r<8; r++) {
         for(let c=0; c<8; c++) {
             const val = board[r][c];
-            if(val === 1) b++;
-            if(val === 2) w++;
+            if(val === 1) b++; else if(val === 2) w++;
             const cell = document.createElement('div');
             cell.className = 'cell';
-            
-            // 玩家回合提示
             if(currentPlayer === 1 && val === 0) {
                 const seq = getLogicalFlipSequence(r, c, 1);
                 if(seq.length > 0) {
                     cell.classList.add('hint');
-                    cell.onclick = () => processMove(r, c, seq);
+                    cell.onclick = (function(row, col, s) {
+                        return function() { processMove(row, col, s); };
+                    })(r, c, seq);
                 }
             }
-
             if(val !== 0) {
                 const piece = document.createElement('div');
                 piece.className = `piece ${val === 1 ? 'black' : 'white'}`;
@@ -87,31 +83,32 @@ function render() {
 async function processMove(r, c, sequence) {
     if(isAnimating) return;
     isAnimating = true;
-    
+
+    // 關鍵修復：落子瞬間手動立即顯示棋子，不等待渲染
     board[r][c] = currentPlayer;
-    render(); 
+    const targetCell = boardEl.children[r * 8 + c];
+    targetCell.classList.remove('hint');
+    const newPiece = document.createElement('div');
+    newPiece.className = `piece ${currentPlayer === 1 ? 'black' : 'white'}`;
+    newPiece.innerHTML = '<div class="face front"></div><div class="face back"></div>';
+    targetCell.appendChild(newPiece);
     
-    const newPiece = boardEl.children[r * 8 + c].querySelector('.piece');
-    if(newPiece) newPiece.classList.add('flipping');
-    
-    await new Promise(res => setTimeout(res, 350));
-    
+    // 稍微等待落盤感覺
+    await new Promise(res => setTimeout(res, 250));
+
+    // 依序執行側向翻轉
     for(const target of sequence) {
-        const cell = boardEl.children[target.r * 8 + target.c];
-        const piece = cell.querySelector('.piece');
+        const piece = boardEl.children[target.r * 8 + target.c].querySelector('.piece');
         if (piece) {
-            piece.classList.add('flipping');
+            piece.classList.remove('flipping-to-white', 'flipping-to-black');
+            void piece.offsetWidth; // 觸發重繪
+            piece.classList.add(currentPlayer === 1 ? 'flipping-to-black' : 'flipping-to-white');
             board[target.r][target.c] = currentPlayer;
-            if (currentPlayer === 1) { 
-                piece.classList.remove('white'); piece.classList.add('black'); 
-            } else { 
-                piece.classList.remove('black'); piece.classList.add('white'); 
-            }
         }
-        await new Promise(res => setTimeout(res, 100)); 
+        await new Promise(res => setTimeout(res, 120)); 
     }
-    
-    await new Promise(res => setTimeout(res, 500));
+
+    await new Promise(res => setTimeout(res, 600));
     isAnimating = false;
     currentPlayer = 3 - currentPlayer;
     updateGameFlow();
@@ -121,85 +118,61 @@ function updateGameFlow() {
     const moves = getAvailableMoves(currentPlayer);
     if(moves.length === 0) {
         currentPlayer = 3 - currentPlayer;
-        const nextMoves = getAvailableMoves(currentPlayer);
-        if(nextMoves.length === 0) {
-            endGame();
-        } else {
-            messageEl.textContent = (currentPlayer === 1 ? "玩家" : "電腦") + "連續回合！";
-            if(currentPlayer === 2) setTimeout(aiAction, 800);
-            render();
+        if(getAvailableMoves(currentPlayer).length === 0) endGame();
+        else {
+            messageEl.textContent = (currentPlayer === 1 ? "玩家" : "電腦") + "跳過回合";
+            if (currentPlayer === 2) setTimeout(aiAction, 800); else render();
         }
     } else {
-        if(currentPlayer === 2) {
+        if (currentPlayer === 2) {
             messageEl.textContent = "電腦思考中...";
             setTimeout(aiAction, 800);
         } else {
             messageEl.textContent = "輪到黑棋 (玩家)";
+            render();
         }
-        render();
     }
 }
 
-// 修改點：加強 AI 決策邏輯
 function aiAction() {
+    // 修復：每次行動前即時讀取下拉選單的值
+    const currentDifficulty = aiLevelSelect.value;
     const moves = getAvailableMoves(2);
     if(moves.length === 0) return;
-
-    // 每次執行都即時獲取目前選單值
-    const currentDifficulty = aiLevelSelect.value;
+    
     let bestMove;
-
     if(currentDifficulty === 'easy') {
-        // 隨機選擇
         bestMove = moves[Math.floor(Math.random() * moves.length)];
     } else {
-        // 進階策略：權重評分系統
-        let bestScore = -Infinity;
+        let maxScore = -Infinity;
         let candidates = [];
-
-        moves.forEach(move => {
-            let score = weights[move.r][move.c];
-            
-            // 策略加分：如果這手棋能翻轉很多棋子 (穩定度考慮)
-            score += move.seq.length * 2;
-
-            // 角落極大化策略
-            if ((move.r === 0 || move.r === 7) && (move.c === 0 || move.c === 7)) {
-                score += 50; 
-            }
-
-            if (score > bestScore) {
-                bestScore = score;
-                candidates = [move];
-            } else if (score === bestScore) {
-                candidates.push(move);
-            }
+        moves.forEach(m => {
+            let s = weights[m.r][m.c] + (m.seq.length * 2);
+            if(s > maxScore) { maxScore = s; candidates = [m]; }
+            else if(s === maxScore) candidates.push(m);
         });
-        
-        // 從評分最高的位置中隨機選一個（增加變幻感）
         bestMove = candidates[Math.floor(Math.random() * candidates.length)];
     }
-    
     processMove(bestMove.r, bestMove.c, bestMove.seq);
 }
 
 function getAvailableMoves(color) {
-    let results = [];
+    let res = [];
     for(let r=0; r<8; r++) {
         for(let c=0; c<8; c++) {
-            const seq = getLogicalFlipSequence(r, c, color);
-            if(seq.length > 0) results.push({r, c, seq});
+            const s = getLogicalFlipSequence(r, c, color);
+            if(s.length > 0) res.push({r, c, seq: s});
         }
     }
-    return results;
+    return res;
 }
 
 function endGame() {
     isAnimating = false;
     render();
-    const b = parseInt(blackScoreEl.textContent);
-    const w = parseInt(whiteScoreEl.textContent);
-    messageEl.innerHTML = `<span style="color:#d63031; font-weight:bold;">遊戲結束！ ${b > w ? '黑棋獲勝' : b < w ? '白棋獲勝' : '平手'}</span>`;
+    const b = parseInt(blackScoreEl.textContent, 10);
+    const w = parseInt(whiteScoreEl.textContent, 10);
+    messageEl.innerHTML = `遊戲結束！${b > w ? '黑棋獲勝' : b < w ? '白棋獲勝' : '平手'}`;
 }
 
 resetBtn.onclick = init;
