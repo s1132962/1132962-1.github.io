@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <title>1132962-HW10</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <h1>黑白棋</h1>
+        
+        <div class="status-bar">
+            <div class="score-box black-box">
+                <span class="label">黑 (玩家)</span>
+                <span id="black-score" class="value">2</span>
+            </div>
+            <div class="score-box white-box">
+                <span class="label">白 (電腦)</span>
+                <span id="white-score" class="value">2</span>
+            </div>
+        </div>
+        
+        <div class="controls">
+            <div class="select-wrapper">
+                <label>電腦棋力：</label>
+                <select id="ai-level">
+                    <option value="easy">基本棋力</option>
+                    <option value="hard" selected>進階棋力</option>
+                </select>
+            </div>
+            <button id="reset-btn">重新開始</button>
+        </div>
+
+        <div id="message">輪到黑棋 (玩家)</div>
+        
+        <div id="board" class="board"></div>
+    </div>
+    <script src="script.js"></script>
+</body>
+</html>
